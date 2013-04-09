@@ -39,6 +39,18 @@ class BaseGenericRelation(GenericRelation):
             kwargs.setdefault("to", to)
         super(BaseGenericRelation, self).__init__(*args, **kwargs)
 
+    def db_type(self, connection):
+        """
+        South expects this to return a string for initial migrations
+        against MySQL, to check for text or geometery columns. These
+        generic fields are neither of those, but returning an empty
+        string here at least allows migrations to run successfully.
+        See http://south.aeracode.org/ticket/1204
+        """
+        if self.frozen_by_south:
+            return ""
+        return None
+
     def contribute_to_class(self, cls, name):
         """
         Add each of the names and fields in the ``fields`` attribute
@@ -203,10 +215,13 @@ class KeywordsField(BaseGenericRelation):
         if hasattr(cls, "search_fields") and name in cls.search_fields:
             try:
                 weight = cls.search_fields[name]
-            except AttributeError:
+            except TypeError:
                 # search_fields is a sequence.
                 index = cls.search_fields.index(name)
+                search_fields_type = type(cls.search_fields)
+                cls.search_fields = list(cls.search_fields)
                 cls.search_fields[index] = string_field_name
+                cls.search_fields = search_fields_type(cls.search_fields)
             else:
                 del cls.search_fields[name]
                 cls.search_fields[string_field_name] = weight

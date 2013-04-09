@@ -2,7 +2,7 @@
 import os
 import sys
 
-from django.conf.global_settings import STATICFILES_FINDERS
+from django.conf import global_settings as defaults
 from django.template.loader import add_to_builtins
 
 
@@ -57,11 +57,14 @@ def set_dynamic_settings(s):
     # Some kind of development server is running via runserver,
     # runserver_plus or harvest (lettuce)
     s["DEV_SERVER"] = management_command.startswith(("runserver", "harvest"))
+
     # Change tuple settings to lists for easier manipulation.
-    s["INSTALLED_APPS"] = list(s["INSTALLED_APPS"])
-    s["MIDDLEWARE_CLASSES"] = list(s["MIDDLEWARE_CLASSES"])
-    s["STATICFILES_FINDERS"] = list(s.get("STATICFILES_FINDERS",
-                                    STATICFILES_FINDERS))
+    s.setdefault("AUTHENTICATION_BACKENDS", defaults.AUTHENTICATION_BACKENDS)
+    s.setdefault("STATICFILES_FINDERS", defaults.STATICFILES_FINDERS)
+    tuple_list_settings = ("AUTHENTICATION_BACKENDS", "INSTALLED_APPS",
+                           "MIDDLEWARE_CLASSES", "STATICFILES_FINDERS")
+    for setting in tuple_list_settings:
+        s[setting] = list(s[setting])
 
     if s["DEV_SERVER"]:
         s["STATICFILES_DIRS"] = list(s.get("STATICFILES_DIRS", []))
@@ -79,10 +82,8 @@ def set_dynamic_settings(s):
         # Django 1.5's tests make.
 
         # contrib.auth tests fail without its own auth backend installed.
-        s["AUTHENTICATION_BACKENDS"] = list(s["AUTHENTICATION_BACKENDS"])
         append("AUTHENTICATION_BACKENDS",
                "django.contrib.auth.backends.ModelBackend")
-        s["AUTHENTICATION_BACKENDS"] = tuple(s["AUTHENTICATION_BACKENDS"])
 
         # Tests in contrib.redirects simply don't work with a
         # catch-all urlpattern such as Mezzanine's pages app.
@@ -137,7 +138,6 @@ def set_dynamic_settings(s):
         move("INSTALLED_APPS", grappelli_name, len(s["INSTALLED_APPS"]))
     except ValueError:
         s["GRAPPELLI_INSTALLED"] = False
-        s["ADMIN_MEDIA_PREFIX"] = s["STATIC_URL"] + "admin/"
     else:
         s["GRAPPELLI_INSTALLED"] = True
         s.setdefault("GRAPPELLI_ADMIN_HEADLINE", "Mezzanine")
@@ -166,6 +166,10 @@ def set_dynamic_settings(s):
                                    (mw.endswith("UpdateCacheMiddleware") or
                                     mw.endswith("FetchFromCacheMiddleware"))]
 
+    # Revert tuple settings back to tuples.
+    for setting in tuple_list_settings:
+        s[setting] = tuple(s[setting])
+
     # Some settings tweaks for different DB engines.
     for (key, db) in s["DATABASES"].items():
         shortname = db["ENGINE"].split(".")[-1]
@@ -177,10 +181,3 @@ def set_dynamic_settings(s):
         elif shortname == "mysql":
             # Required MySQL collation for tests.
             s["DATABASES"][key]["TEST_COLLATION"] = "utf8_general_ci"
-
-    # Remaining is for Django < 1.4
-    from django import VERSION
-    if VERSION >= (1, 4):
-        return
-    s["TEMPLATE_CONTEXT_PROCESSORS"] = list(s["TEMPLATE_CONTEXT_PROCESSORS"])
-    remove("TEMPLATE_CONTEXT_PROCESSORS", "django.core.context_processors.tz")
